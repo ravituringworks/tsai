@@ -195,7 +195,7 @@ tsai-rs/
 6. ~~Implement TSForecaster with forecasting support~~ ✅
 7. ~~Add integration tests for training pipelines~~ ✅
 8. Add more unit tests
-9. Add benchmark suite
+9. ~~Add benchmark suite~~ ✅
 10. ~~Implement dataset downloading~~ ✅
 
 ## Integration Tests
