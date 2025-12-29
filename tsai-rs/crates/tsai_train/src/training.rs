@@ -5,7 +5,7 @@
 use std::time::Instant;
 
 use burn::module::AutodiffModule;
-use burn::nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig};
+use burn::nn::loss::CrossEntropyLossConfig;
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::prelude::*;
 use burn::tensor::backend::AutodiffBackend;

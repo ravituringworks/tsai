@@ -8,7 +8,6 @@
 //! of Burn's type system.
 
 use burn::prelude::*;
-use burn::tensor::backend::AutodiffBackend;
 use burn_autodiff::Autodiff;
 use burn_ndarray::NdArray;
 #[allow(unused_imports)]
@@ -17,7 +16,7 @@ use ndarray::{Array2, Array3};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, TrainError};
-use crate::training::{ClassificationTrainer, ClassificationTrainerConfig, TrainingOutput};
+use crate::training::{ClassificationTrainer, ClassificationTrainerConfig};
 use tsai_core::Seed;
 use tsai_data::{train_test_split, TSDataLoaders, TSDataset};
 use tsai_models::{

@@ -596,7 +596,7 @@ impl<B: Backend> Metric<B> for MCC {
             // Compute components
             let n = n_samples as f64;
             let mut c = 0.0; // sum of diagonal (correct predictions)
-            let mut s = n * n; // total squared
+            let s = n * n; // total squared
 
             // Row and column sums
             let mut row_sums = vec![0i64; self.n_classes];

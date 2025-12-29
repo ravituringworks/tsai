@@ -2,7 +2,6 @@
 
 use burn::prelude::*;
 use ndarray::{Array2, Array3};
-use serde::{Deserialize, Serialize};
 
 use crate::error::{DataError, Result};
 
@@ -141,7 +140,7 @@ impl TSDataset {
     /// Get a sample by index.
     ///
     /// Returns the input slice and optionally the target.
-    pub fn get(&self, index: usize) -> Result<(ndarray::ArrayView2<f32>, Option<ndarray::ArrayView1<f32>>)> {
+    pub fn get(&self, index: usize) -> Result<(ndarray::ArrayView2<'_, f32>, Option<ndarray::ArrayView1<'_, f32>>)> {
         if index >= self.len() {
             return Err(DataError::IndexOutOfBounds {
                 index,

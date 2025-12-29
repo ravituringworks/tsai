@@ -5,7 +5,7 @@
 
 use burn::nn::{
     attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig},
-    Dropout, DropoutConfig, Embedding, EmbeddingConfig, LayerNorm, LayerNormConfig, Linear,
+    Dropout, DropoutConfig, LayerNorm, LayerNormConfig, Linear,
     LinearConfig, Relu,
 };
 use burn::prelude::*;

@@ -3,16 +3,14 @@
 use std::marker::PhantomData;
 
 use burn::module::AutodiffModule;
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
+use burn::optim::Optimizer;
 use burn::prelude::*;
 use burn::tensor::backend::AutodiffBackend;
 use serde::{Deserialize, Serialize};
 
 use crate::callback::{CallbackContext, CallbackList, ProgressCallback};
-use crate::error::{Result, TrainError};
-use crate::losses::CrossEntropyLoss;
+use crate::error::Result;
 use crate::metrics::{Accuracy, Metric};
-use crate::scheduler::{OneCycleLR, Scheduler};
 use crate::training::TrainingOutput;
 use tsai_data::TSDataLoaders;
 
@@ -250,7 +248,7 @@ where
     /// * `forward_fn` - Forward function for training
     /// * `valid_forward_fn` - Forward function for validation
     pub fn fit_with_early_stopping<F, G>(
-        mut self,
+        self,
         n_epochs: usize,
         patience: usize,
         forward_fn: F,

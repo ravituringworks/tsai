@@ -1,6 +1,5 @@
 //! Confusion matrix computation and visualization.
 
-use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
