@@ -1,6 +1,5 @@
 //! Time series dataset types.
 
-use burn::prelude::*;
 use ndarray::{Array2, Array3};
 
 use crate::error::{DataError, Result};

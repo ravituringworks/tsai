@@ -112,7 +112,7 @@ impl Sampler for StratifiedSampler {
 
         // Interleave classes (round-robin)
         let mut result = Vec::with_capacity(self.labels.len());
-        let n_classes = class_indices.len();
+        let _n_classes = class_indices.len();
         let max_len = class_indices.values().map(|v| v.len()).max().unwrap_or(0);
 
         let mut class_keys: Vec<usize> = class_indices.keys().copied().collect();

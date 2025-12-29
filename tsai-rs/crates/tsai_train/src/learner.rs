@@ -3,7 +3,6 @@
 use std::marker::PhantomData;
 
 use burn::module::AutodiffModule;
-use burn::optim::Optimizer;
 use burn::prelude::*;
 use burn::tensor::backend::AutodiffBackend;
 use serde::{Deserialize, Serialize};

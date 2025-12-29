@@ -200,7 +200,7 @@ impl<B: Backend> PatchTST<B> {
         // The patch embedding expects (batch, n_vars, n_patches, patch_len)
         // For now, just flatten and process - actual patching would be done externally
         let embedded = self.patch_embed.forward(x.clone());
-        let [_, _, d_model] = embedded.dims();
+        let [_, _, _d_model] = embedded.dims();
 
         let mut out = embedded;
         for layer in &self.encoder_layers {

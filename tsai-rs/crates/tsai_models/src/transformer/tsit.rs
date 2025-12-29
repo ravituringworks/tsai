@@ -391,7 +391,7 @@ impl<B: Backend> TSiTPlus<B> {
 
     /// Forward pass.
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 2> {
-        let [batch, _n_vars, seq_len] = x.dims();
+        let [_batch, _n_vars, seq_len] = x.dims();
         let device = x.device();
 
         // Transpose to (batch, seq_len, n_vars)

@@ -3,7 +3,10 @@
 //! Provides NUMA topology awareness for optimized memory placement
 //! and thread affinity on multi-socket systems.
 
-use crate::error::{ComputeError, ComputeResult};
+use crate::error::ComputeResult;
+
+#[cfg(feature = "numa")]
+use crate::error::ComputeError;
 
 /// NUMA memory information for a node.
 #[derive(Debug, Clone)]

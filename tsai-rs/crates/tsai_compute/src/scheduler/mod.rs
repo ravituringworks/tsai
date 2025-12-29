@@ -7,9 +7,7 @@ mod workload;
 
 pub use workload::*;
 
-use std::sync::Arc;
-
-use crate::device::{AnyDevice, DeviceId, DevicePool};
+use crate::device::{DeviceId, DevicePool};
 use crate::error::{ComputeError, ComputeResult};
 
 /// Workload descriptor for scheduling decisions.

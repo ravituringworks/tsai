@@ -143,7 +143,7 @@ impl TSClassifier {
     ///
     /// Training metrics including final accuracy.
     pub fn fit(&mut self, x: &Array3<f32>, y: &Array2<f32>) -> Result<TrainingMetrics> {
-        let (n_samples, n_vars, seq_len) = (x.shape()[0], x.shape()[1], x.shape()[2]);
+        let (_n_samples, n_vars, seq_len) = (x.shape()[0], x.shape()[1], x.shape()[2]);
         self.n_vars = n_vars;
         self.seq_len = seq_len;
 

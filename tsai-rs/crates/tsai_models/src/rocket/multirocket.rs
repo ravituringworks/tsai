@@ -181,7 +181,7 @@ impl MultiRocketFeatures {
         let [n_samples, n_vars, seq_len] = x.dims();
         let x_data: Vec<f32> = x.to_data().to_vec().unwrap();
 
-        for (k_idx, ((kernel, &dilation), bias)) in self
+        for (_k_idx, ((kernel, &dilation), bias)) in self
             .kernels
             .iter()
             .zip(&self.dilations)
