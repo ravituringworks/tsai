@@ -195,3 +195,164 @@ fn test_dataset_creation() {
     assert_eq!(ds.n_vars(), 2);
     assert_eq!(ds.seq_len(), 50);
 }
+
+/// Create synthetic regression data for testing.
+fn create_synthetic_regression_data(
+    n_samples: usize,
+    n_vars: usize,
+    seq_len: usize,
+    n_outputs: usize,
+) -> (Array3<f32>, Array2<f32>) {
+    use rand::prelude::*;
+    use rand_chacha::ChaCha8Rng;
+
+    let mut rng = ChaCha8Rng::seed_from_u64(42);
+
+    // Create random time series with target-dependent patterns
+    let mut x_data = Vec::with_capacity(n_samples * n_vars * seq_len);
+    let mut y_data = Vec::with_capacity(n_samples * n_outputs);
+
+    for _i in 0..n_samples {
+        let base = rng.gen::<f32>() * 2.0;
+
+        for _v in 0..n_vars {
+            for t in 0..seq_len {
+                let value = base + (t as f32 / seq_len as f32) + rng.gen::<f32>() * 0.1;
+                x_data.push(value);
+            }
+        }
+
+        // Target is related to the base
+        for _o in 0..n_outputs {
+            y_data.push(base + rng.gen::<f32>() * 0.5);
+        }
+    }
+
+    let x = Array3::from_shape_vec((n_samples, n_vars, seq_len), x_data).unwrap();
+    let y = Array2::from_shape_vec((n_samples, n_outputs), y_data).unwrap();
+
+    (x, y)
+}
+
+#[test]
+fn test_regression_training_pipeline() {
+    use tsai_train::{RegressionTrainer, RegressionTrainerConfig};
+
+    // Create small synthetic dataset
+    let n_samples = 32;
+    let n_vars = 2;
+    let seq_len = 50;
+    let n_outputs = 1;
+    let batch_size = 8;
+    let n_epochs = 2;
+
+    let (x, y) = create_synthetic_regression_data(n_samples, n_vars, seq_len, n_outputs);
+
+    // Create dataset and split
+    let train_samples = n_samples * 3 / 4;
+    let x_train = x.slice(ndarray::s![..train_samples, .., ..]).to_owned();
+    let y_train = y.slice(ndarray::s![..train_samples, ..]).to_owned();
+    let x_valid = x.slice(ndarray::s![train_samples.., .., ..]).to_owned();
+    let y_valid = y.slice(ndarray::s![train_samples.., ..]).to_owned();
+
+    let train_ds = TSDataset::from_arrays(x_train, Some(y_train)).expect("Failed to create train dataset");
+    let valid_ds = TSDataset::from_arrays(x_valid, Some(y_valid)).expect("Failed to create valid dataset");
+
+    // Create dataloaders
+    let dls = TSDataLoaders::builder(train_ds, valid_ds)
+        .batch_size(batch_size)
+        .build()
+        .expect("Failed to create dataloaders");
+
+    // Configure model - use n_outputs as n_classes for regression
+    let model_config = InceptionTimePlusConfig {
+        n_vars,
+        seq_len,
+        n_classes: n_outputs,
+        n_blocks: 2,
+        n_filters: 8,
+        kernel_sizes: [9, 19, 39],
+        bottleneck_dim: 8,
+        dropout: 0.0,
+    };
+
+    // Initialize model
+    let device = <TrainBackend as Backend>::Device::default();
+    let model: InceptionTimePlus<TrainBackend> = model_config.init(&device);
+
+    // Configure regression trainer
+    let trainer_config = RegressionTrainerConfig {
+        n_epochs,
+        lr: 1e-3,
+        weight_decay: 0.01,
+        grad_clip: 1.0,
+        verbose: false,
+        early_stopping_patience: 0,
+        early_stopping_min_delta: 0.0001,
+    };
+
+    let trainer = RegressionTrainer::<TrainBackend>::new(trainer_config, device);
+
+    // Train
+    let result = trainer.fit_with_forward(
+        model,
+        &dls,
+        |m, x| m.forward(x),
+        |m, x| m.forward(x),
+    );
+
+    // Verify training succeeded
+    assert!(result.is_ok(), "Regression training failed: {:?}", result.err());
+    let output = result.unwrap();
+
+    // Verify we got metrics
+    assert_eq!(output.train_losses.len(), n_epochs);
+    assert_eq!(output.valid_losses.len(), n_epochs);
+
+    // Verify losses are reasonable (not NaN or Inf)
+    for loss in &output.train_losses {
+        assert!(loss.is_finite(), "Train loss is not finite: {}", loss);
+    }
+    for loss in &output.valid_losses {
+        assert!(loss.is_finite(), "Valid loss is not finite: {}", loss);
+    }
+}
+
+#[test]
+fn test_tsregressor_api() {
+    use tsai_train::compat::{TSRegressor, TSRegressorConfig};
+
+    // Create synthetic regression data
+    let (x, y) = create_synthetic_regression_data(32, 2, 50, 1);
+
+    // Create regressor with minimal epochs for fast testing
+    let config = TSRegressorConfig {
+        arch: "InceptionTimePlus".to_string(),
+        n_epochs: 1,
+        lr: 1e-3,
+        batch_size: 8,
+        valid_ratio: 0.25,
+        seed: 42,
+    };
+
+    let mut reg = TSRegressor::new(config);
+
+    // Fit
+    let result = reg.fit(&x, &y);
+    assert!(result.is_ok(), "TSRegressor.fit failed: {:?}", result.err());
+
+    // Verify fitted
+    assert!(reg.is_fitted());
+    assert_eq!(reg.n_outputs(), 1);
+
+    // Test predict
+    let preds = reg.predict(&x);
+    assert!(preds.is_ok());
+    let preds = preds.unwrap();
+    assert_eq!(preds.shape(), &[32, 1]);
+
+    // Verify predictions are finite
+    for val in preds.iter() {
+        assert!(val.is_finite(), "Prediction is not finite: {}", val);
+    }
+}

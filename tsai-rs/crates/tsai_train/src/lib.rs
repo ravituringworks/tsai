@@ -54,7 +54,11 @@ pub use scheduler::{
 };
 // Re-export model traits from tsai_core for convenience
 pub use tsai_core::{TSClassificationModel, TSForecastingModel, TSRegressionModel};
-pub use training::{train_classification, ClassificationTrainer, ClassificationTrainerConfig, TrainingOutput};
+pub use training::{
+    train_classification, train_regression,
+    ClassificationTrainer, ClassificationTrainerConfig, TrainingOutput,
+    RegressionTrainer, RegressionTrainerConfig, RegressionOutput,
+};
 pub use evaluation::{evaluate_classification, ConfusionMatrix, EvaluationResult};
 
 #[cfg(feature = "wandb")]

@@ -143,10 +143,11 @@ All transforms (TimeWarp, CutOut, GaussianNoise, MagScale, MixUp, CutMix, etc.) 
 
 ### ~~Training Loop~~ ✅ RESOLVED
 - **ClassificationTrainer**: Full autodiff integration with gradient computation, optimizer steps, early stopping, and validation
+- **RegressionTrainer**: Full implementation with MSE loss, early stopping, and validation
 - **Learner struct**: Complete with `fit_one_cycle`, `fit_with_early_stopping`, and `get_preds` methods
 - **compat.rs facades**:
   - TSClassifier: Fully implemented with InceptionTimePlus, OmniScaleCNN, and TSTPlus support
-  - TSRegressor: Placeholder with API ready (needs regression model heads)
+  - TSRegressor: Fully implemented with MSE loss training and InceptionTimePlus, OmniScaleCNN, TSTPlus support
   - TSForecaster: Placeholder with API ready (needs forecasting model heads)
 
 ### ~~Dataset Fetching~~ ✅ RESOLVED
@@ -190,8 +191,9 @@ tsai-rs/
 2. ~~Complete transform implementations~~ ✅
 3. ~~Complete Learner orchestration methods~~ ✅
 4. ~~Implement TSClassifier in compat.rs~~ ✅
-5. Add regression model output heads for TSRegressor
+5. ~~Implement TSRegressor with RegressionTrainer and MSE loss~~ ✅
 6. Add forecasting model output heads for TSForecaster
-7. Add more unit tests
-8. Add benchmark suite
-9. ~~Implement dataset downloading~~ ✅
+7. ~~Add integration tests for training pipelines~~ ✅
+8. Add more unit tests
+9. Add benchmark suite
+10. ~~Implement dataset downloading~~ ✅
