@@ -62,6 +62,11 @@ rand_chacha = { workspace = true }
 burn-autodiff = { workspace = true }
 burn-ndarray = { workspace = true }
 anyhow = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "training_bench"
+harness = false
 
 # Examples are in the workspace root examples/ directory
 [[example]]
@@ -91,3 +96,7 @@ path = "../../examples/benchmark_ucr.rs"
 [[example]]
 name = "compare_models"
 path = "../../examples/compare_models.rs"
+
+[[example]]
+name = "sklearn_api"
+path = "../../examples/sklearn_api.rs"
