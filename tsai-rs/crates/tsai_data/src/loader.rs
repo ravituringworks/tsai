@@ -6,7 +6,6 @@ use rand_chacha::ChaCha8Rng;
 
 use crate::dataset::TSDataset;
 use crate::error::{DataError, Result};
-use crate::sampler::Sampler;
 use tsai_core::{Seed, Split, TSBatch, TSTensor};
 
 /// A dataloader that produces batches from a dataset.

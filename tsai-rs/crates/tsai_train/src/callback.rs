@@ -190,6 +190,8 @@ impl CallbackList {
 
 /// Progress bar callback for displaying training progress.
 pub struct ProgressCallback {
+    /// Whether to show batch-level progress (reserved for future use).
+    #[allow(dead_code)]
     show_batch: bool,
 }
 

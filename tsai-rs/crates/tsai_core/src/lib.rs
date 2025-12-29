@@ -43,7 +43,7 @@ pub use seed::Seed;
 pub use shape::TSShape;
 pub use split::Split;
 pub use tensor::{TSBatch, TSMaskTensor, TSTensor};
-pub use transform::Transform;
+pub use transform::{Compose, Identity, Transform};
 
 /// Backend type aliases for convenience
 pub mod backend {

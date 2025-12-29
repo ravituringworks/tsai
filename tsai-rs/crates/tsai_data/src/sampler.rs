@@ -1,4 +1,7 @@
 //! Sampling strategies for dataloaders.
+//!
+//! Note: Samplers are designed for future integration with dataloaders.
+//! Currently dataloaders use a built-in shuffle mechanism.
 
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -6,6 +9,9 @@ use rand_chacha::ChaCha8Rng;
 use tsai_core::Seed;
 
 /// A sampler that produces indices for iteration.
+///
+/// Note: Reserved for future integration with dataloaders.
+#[allow(dead_code)]
 pub trait Sampler: Send + Sync {
     /// Get the indices for the next epoch.
     fn sample(&mut self, n: usize) -> Vec<usize>;
@@ -30,6 +36,7 @@ impl Sampler for SequentialSampler {
 
 /// Random sampler that shuffles indices each epoch.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RandomSampler {
     rng: ChaCha8Rng,
 }
@@ -66,6 +73,7 @@ impl Sampler for RandomSampler {
 
 /// Stratified sampler that maintains class balance.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StratifiedSampler {
     rng: ChaCha8Rng,
     labels: Vec<usize>,
