@@ -22,11 +22,21 @@ pub enum ComputeError {
 
     /// Memory allocation failed.
     #[error("Memory allocation failed: size={size}, reason={reason}")]
-    AllocationFailed { size: usize, reason: String },
+    AllocationFailed {
+        /// Requested allocation size in bytes.
+        size: usize,
+        /// Reason for allocation failure.
+        reason: String,
+    },
 
     /// Out of memory on device.
     #[error("Out of memory: requested {requested} bytes, available {available} bytes")]
-    OutOfMemory { requested: u64, available: u64 },
+    OutOfMemory {
+        /// Requested memory in bytes.
+        requested: u64,
+        /// Available memory in bytes.
+        available: u64,
+    },
 
     /// Buffer operation error.
     #[error("Buffer error: {0}")]
@@ -58,7 +68,12 @@ pub enum ComputeError {
 
     /// Feature not supported on this device.
     #[error("Feature not supported: {feature} on device {device}")]
-    FeatureNotSupported { feature: String, device: String },
+    FeatureNotSupported {
+        /// Name of the unsupported feature.
+        feature: String,
+        /// Device identifier.
+        device: String,
+    },
 
     /// Invalid configuration.
     #[error("Invalid configuration: {0}")]
@@ -70,7 +85,12 @@ pub enum ComputeError {
 
     /// Backend-specific error.
     #[error("{backend} error: {message}")]
-    BackendError { backend: BackendKind, message: String },
+    BackendError {
+        /// Which backend produced the error.
+        backend: BackendKind,
+        /// Error message from the backend.
+        message: String,
+    },
 
     /// Discovery failed.
     #[error("Device discovery failed: {0}")]
@@ -88,11 +108,17 @@ pub enum ComputeError {
 /// Backend identifier for error context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BackendKind {
+    /// CPU backend.
     Cpu,
+    /// NVIDIA CUDA backend.
     Cuda,
+    /// Apple Metal backend.
     Metal,
+    /// Vulkan backend.
     Vulkan,
+    /// OpenCL backend.
     OpenCl,
+    /// AMD ROCm backend.
     Rocm,
 }
 

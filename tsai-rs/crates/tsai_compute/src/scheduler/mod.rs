@@ -160,6 +160,7 @@ pub struct RoundRobinScheduler {
 }
 
 impl RoundRobinScheduler {
+    /// Create a new round-robin scheduler.
     pub fn new() -> Self {
         Self {
             counter: std::sync::atomic::AtomicUsize::new(0),

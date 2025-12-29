@@ -273,17 +273,29 @@ impl fmt::Display for DeviceFeature {
 /// Supported precision types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Precision {
+    /// 16-bit floating point (half precision).
     Float16,
+    /// 16-bit brain floating point (for ML).
     BFloat16,
+    /// 32-bit floating point (single precision).
     Float32,
+    /// 64-bit floating point (double precision).
     Float64,
+    /// 8-bit signed integer.
     Int8,
+    /// 16-bit signed integer.
     Int16,
+    /// 32-bit signed integer.
     Int32,
+    /// 64-bit signed integer.
     Int64,
+    /// 8-bit unsigned integer.
     UInt8,
+    /// 16-bit unsigned integer.
     UInt16,
+    /// 32-bit unsigned integer.
     UInt32,
+    /// 64-bit unsigned integer.
     UInt64,
 }
 
@@ -303,22 +315,44 @@ impl Precision {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComputeVersion {
     /// CPU with SIMD level.
-    Cpu { simd: SimdLevel },
+    Cpu {
+        /// SIMD instruction set level.
+        simd: SimdLevel,
+    },
 
     /// CUDA compute capability (e.g., 8.6 for RTX 3080).
-    Cuda { major: u32, minor: u32 },
+    Cuda {
+        /// Major version of compute capability.
+        major: u32,
+        /// Minor version of compute capability.
+        minor: u32,
+    },
 
     /// Metal GPU family.
-    Metal { family: MetalFamily },
+    Metal {
+        /// Metal GPU family identifier.
+        family: MetalFamily,
+    },
 
     /// Vulkan API version.
-    Vulkan { api_version: u32 },
+    Vulkan {
+        /// Packed Vulkan API version number.
+        api_version: u32,
+    },
 
     /// OpenCL version.
-    OpenCl { major: u32, minor: u32 },
+    OpenCl {
+        /// Major version of OpenCL.
+        major: u32,
+        /// Minor version of OpenCL.
+        minor: u32,
+    },
 
     /// ROCm/HIP architecture.
-    Rocm { gfx_arch: String },
+    Rocm {
+        /// GFX architecture string (e.g., "gfx1030").
+        gfx_arch: String,
+    },
 
     /// Unknown or unspecified.
     Unknown,
@@ -421,6 +455,7 @@ impl SimdLevel {
         }
     }
 
+    /// Detect SIMD level on AArch64.
     #[cfg(target_arch = "aarch64")]
     pub fn detect() -> Self {
         // NEON is mandatory on AArch64
@@ -459,16 +494,27 @@ impl fmt::Display for SimdLevel {
 /// Metal GPU family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetalFamily {
+    /// Apple GPU family 1 (A7, A8).
     Apple1,
+    /// Apple GPU family 2 (A8X).
     Apple2,
+    /// Apple GPU family 3 (A9, A10).
     Apple3,
+    /// Apple GPU family 4 (A11).
     Apple4,
+    /// Apple GPU family 5 (A12).
     Apple5,
+    /// Apple GPU family 6 (A13).
     Apple6,
+    /// Apple GPU family 7 (A14, M1).
     Apple7,
+    /// Apple GPU family 8 (A15, A16, M2).
     Apple8,
+    /// Apple GPU family 9 (A17, M3).
     Apple9,
+    /// Mac GPU family 1 (Intel-based Macs).
     Mac1,
+    /// Mac GPU family 2 (Apple Silicon Macs).
     Mac2,
 }
 
