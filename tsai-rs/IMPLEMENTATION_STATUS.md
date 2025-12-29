@@ -141,10 +141,13 @@ The Module derive issue has been resolved. Config structs are not stored in mode
 ### ~~Incomplete Transform Implementations~~ ✅ RESOLVED
 All transforms (TimeWarp, CutOut, GaussianNoise, MagScale, MixUp, CutMix, etc.) are fully implemented with proper tensor operations. All 19 transform tests pass.
 
-### Training Loop (Partially Complete)
+### ~~Training Loop~~ ✅ RESOLVED
 - **ClassificationTrainer**: Full autodiff integration with gradient computation, optimizer steps, early stopping, and validation
-- **Learner struct**: Contains model/dataloader/callback references but missing orchestration methods
-- **compat.rs TODOs**: TSClassifier, TSRegressor, TSForecaster fit/predict methods need integration with ClassificationTrainer
+- **Learner struct**: Complete with `fit_one_cycle`, `fit_with_early_stopping`, and `get_preds` methods
+- **compat.rs facades**:
+  - TSClassifier: Fully implemented with InceptionTimePlus, OmniScaleCNN, and TSTPlus support
+  - TSRegressor: Placeholder with API ready (needs regression model heads)
+  - TSForecaster: Placeholder with API ready (needs forecasting model heads)
 
 ### ~~Dataset Fetching~~ ✅ RESOLVED
 UCR dataset downloading is fully implemented:
@@ -185,8 +188,10 @@ tsai-rs/
 
 1. ~~Fix Module derive issues in model structs~~ ✅
 2. ~~Complete transform implementations~~ ✅
-3. Complete Learner orchestration methods (fit/predict integration)
-4. Implement TSClassifier/TSRegressor/TSForecaster in compat.rs
-5. Add more unit tests
-6. Add benchmark suite
-7. ~~Implement dataset downloading~~ ✅
+3. ~~Complete Learner orchestration methods~~ ✅
+4. ~~Implement TSClassifier in compat.rs~~ ✅
+5. Add regression model output heads for TSRegressor
+6. Add forecasting model output heads for TSForecaster
+7. Add more unit tests
+8. Add benchmark suite
+9. ~~Implement dataset downloading~~ ✅
