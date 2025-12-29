@@ -831,33 +831,60 @@ impl Default for TSForecasterConfig {
     }
 }
 
+/// Trained forecasting model storage for different architectures.
+///
+/// Uses the same model architectures but with n_classes=horizon for forecasting.
+enum TrainedForecastModel {
+    InceptionTimePlus(InceptionTimePlus<InferBackend>),
+    OmniScaleCNN(OmniScaleCNN<InferBackend>),
+    TSTPlus(TSTPlus<InferBackend>),
+}
+
+impl TrainedForecastModel {
+    /// Run inference on the trained model.
+    fn forward(&self, x: Tensor<InferBackend, 3>) -> Tensor<InferBackend, 2> {
+        match self {
+            TrainedForecastModel::InceptionTimePlus(m) => m.forward(x),
+            TrainedForecastModel::OmniScaleCNN(m) => m.forward(x),
+            TrainedForecastModel::TSTPlus(m) => m.forward(x),
+        }
+    }
+}
+
 /// Sklearn-like time series forecaster.
 ///
-/// Forecasters predict future values of a time series given historical data.
+/// This forecaster provides a simple, high-level API for time series forecasting
+/// that mirrors the Python tsai library. It predicts future values given historical
+/// data using MSE loss for training.
 ///
-/// Note: Forecasting support requires models with forecasting output heads.
-/// This is a placeholder implementation that demonstrates the API.
-/// Full implementation requires forecasting-specific model configurations
-/// and sequence-to-sequence architectures.
+/// # Supported Architectures
+///
+/// - `InceptionTimePlus` (default) - InceptionTime with improvements
+/// - `OmniScaleCNN` - Multi-scale CNN
+/// - `TSTPlus` - Time Series Transformer
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// use tsai_train::compat::{TSForecaster, TSForecasterConfig};
+/// use ndarray::{Array3, Array2};
 ///
 /// let config = TSForecasterConfig {
 ///     horizon: 24,
 ///     ..Default::default()
 /// };
 /// let mut forecaster = TSForecaster::new(config);
+///
+/// // x: (n_samples, n_vars, seq_len), y: (n_samples, horizon)
 /// forecaster.fit(&x_train, &y_train)?;
 /// let predictions = forecaster.predict(&x_test)?;
 /// ```
 pub struct TSForecaster {
     config: TSForecasterConfig,
-    is_fitted: bool,
+    trained_model: Option<TrainedForecastModel>,
     n_vars: usize,
     seq_len: usize,
+    device: <InferBackend as Backend>::Device,
 }
 
 impl TSForecaster {
@@ -865,43 +892,258 @@ impl TSForecaster {
     pub fn new(config: TSForecasterConfig) -> Self {
         Self {
             config,
-            is_fitted: false,
+            trained_model: None,
             n_vars: 0,
             seq_len: 0,
+            device: Default::default(),
         }
     }
 
     /// Fit the forecaster.
     ///
-    /// Note: This is a placeholder. Full forecasting training requires
-    /// sequence-to-sequence models with forecasting heads.
-    pub fn fit(&mut self, x: &Array3<f32>, _y: &Array2<f32>) -> Result<TrainingMetrics> {
-        let (_, n_vars, seq_len) = (x.shape()[0], x.shape()[1], x.shape()[2]);
+    /// # Arguments
+    ///
+    /// * `x` - Input data of shape (n_samples, n_vars, seq_len)
+    /// * `y` - Future values of shape (n_samples, horizon)
+    ///
+    /// # Returns
+    ///
+    /// Training metrics including final loss.
+    pub fn fit(&mut self, x: &Array3<f32>, y: &Array2<f32>) -> Result<ForecastMetrics> {
+        let (_n_samples, n_vars, seq_len) = (x.shape()[0], x.shape()[1], x.shape()[2]);
         self.n_vars = n_vars;
         self.seq_len = seq_len;
-        self.is_fitted = true;
 
-        // Return placeholder metrics
-        Ok(TrainingMetrics {
-            train_losses: vec![0.0; self.config.n_epochs],
-            valid_losses: vec![0.0; self.config.n_epochs],
-            valid_accs: vec![],
-            best_valid_acc: 0.0,
-            best_epoch: 0,
-            training_time_secs: 0.0,
+        // Validate horizon matches y shape
+        let horizon = y.shape()[1];
+        if horizon != self.config.horizon {
+            return Err(TrainError::Other(format!(
+                "Target shape {} doesn't match configured horizon {}",
+                horizon, self.config.horizon
+            )));
+        }
+
+        // Create dataset
+        let dataset = TSDataset::from_arrays(x.clone(), Some(y.clone()))?;
+
+        // Split into train/valid
+        let seed = Seed::new(self.config.seed);
+        let (train_ds, valid_ds) = train_test_split(&dataset, self.config.valid_ratio, seed)?;
+
+        // Create dataloaders
+        let dls = TSDataLoaders::builder(train_ds, valid_ds)
+            .batch_size(self.config.batch_size)
+            .seed(seed)
+            .build()?;
+
+        // Train based on architecture
+        let metrics = match self.config.arch.as_str() {
+            "InceptionTimePlus" | "inception" | "inception_time" => {
+                self.train_inception_time(&dls)?
+            }
+            "OmniScaleCNN" | "omniscale" => {
+                self.train_omniscale(&dls)?
+            }
+            "TSTPlus" | "tst" | "transformer" => {
+                self.train_tst(&dls)?
+            }
+            other => {
+                return Err(TrainError::Other(format!(
+                    "Unknown architecture '{}'. Supported: InceptionTimePlus, OmniScaleCNN, TSTPlus",
+                    other
+                )));
+            }
+        };
+
+        Ok(metrics)
+    }
+
+    fn train_inception_time(&mut self, dls: &TSDataLoaders) -> Result<ForecastMetrics> {
+        let train_device: <TrainBackend as Backend>::Device = Default::default();
+
+        // Create model config - use horizon as output dimension
+        let model_config = InceptionTimePlusConfig {
+            n_vars: self.n_vars,
+            seq_len: self.seq_len,
+            n_classes: self.config.horizon,
+            n_blocks: 6,
+            n_filters: 32,
+            kernel_sizes: [9, 19, 39],
+            bottleneck_dim: 32,
+            dropout: 0.0,
+        };
+
+        // Initialize model for training
+        let model: InceptionTimePlus<TrainBackend> = model_config.init(&train_device);
+
+        // Configure trainer (use RegressionTrainer for MSE loss)
+        let trainer_config = RegressionTrainerConfig {
+            n_epochs: self.config.n_epochs,
+            lr: self.config.lr,
+            weight_decay: 0.01,
+            grad_clip: 1.0,
+            verbose: true,
+            early_stopping_patience: 0,
+            early_stopping_min_delta: 0.0001,
+        };
+
+        let trainer = RegressionTrainer::<TrainBackend>::new(trainer_config, train_device);
+
+        // Train with forward functions
+        let output = trainer.fit_with_forward(
+            model,
+            dls,
+            |m, x| m.forward(x),
+            |m, x| m.forward(x),
+        )?;
+
+        // Store the trained model
+        let inner_model = output.model.valid();
+        self.trained_model = Some(TrainedForecastModel::InceptionTimePlus(inner_model));
+
+        Ok(ForecastMetrics {
+            train_losses: output.train_losses,
+            valid_losses: output.valid_losses,
+            best_valid_loss: output.best_valid_loss,
+            best_epoch: output.best_epoch,
+            training_time_secs: output.training_time_secs,
+        })
+    }
+
+    fn train_omniscale(&mut self, dls: &TSDataLoaders) -> Result<ForecastMetrics> {
+        let train_device: <TrainBackend as Backend>::Device = Default::default();
+
+        // Create model config
+        let model_config = OmniScaleCNNConfig::new(self.n_vars, self.seq_len, self.config.horizon)
+            .with_n_filters(64)
+            .with_dropout(0.1);
+
+        // Initialize model for training
+        let model: OmniScaleCNN<TrainBackend> = model_config.init(&train_device);
+
+        // Configure trainer
+        let trainer_config = RegressionTrainerConfig {
+            n_epochs: self.config.n_epochs,
+            lr: self.config.lr,
+            weight_decay: 0.01,
+            grad_clip: 1.0,
+            verbose: true,
+            early_stopping_patience: 0,
+            early_stopping_min_delta: 0.0001,
+        };
+
+        let trainer = RegressionTrainer::<TrainBackend>::new(trainer_config, train_device);
+
+        // Train with forward functions
+        let output = trainer.fit_with_forward(
+            model,
+            dls,
+            |m, x| m.forward(x),
+            |m, x| m.forward(x),
+        )?;
+
+        // Store the trained model
+        let inner_model = output.model.valid();
+        self.trained_model = Some(TrainedForecastModel::OmniScaleCNN(inner_model));
+
+        Ok(ForecastMetrics {
+            train_losses: output.train_losses,
+            valid_losses: output.valid_losses,
+            best_valid_loss: output.best_valid_loss,
+            best_epoch: output.best_epoch,
+            training_time_secs: output.training_time_secs,
+        })
+    }
+
+    fn train_tst(&mut self, dls: &TSDataLoaders) -> Result<ForecastMetrics> {
+        let train_device: <TrainBackend as Backend>::Device = Default::default();
+
+        // Create model config
+        let d_model = 64;
+        let model_config = TSTConfig {
+            n_vars: self.n_vars,
+            seq_len: self.seq_len,
+            n_classes: self.config.horizon,
+            d_model,
+            n_heads: 4,
+            n_layers: 3,
+            d_ff: d_model * 4,
+            dropout: 0.1,
+            use_pe: true,
+        };
+
+        // Initialize model for training
+        let model: TSTPlus<TrainBackend> = model_config.init(&train_device);
+
+        // Configure trainer
+        let trainer_config = RegressionTrainerConfig {
+            n_epochs: self.config.n_epochs,
+            lr: self.config.lr,
+            weight_decay: 0.01,
+            grad_clip: 1.0,
+            verbose: true,
+            early_stopping_patience: 0,
+            early_stopping_min_delta: 0.0001,
+        };
+
+        let trainer = RegressionTrainer::<TrainBackend>::new(trainer_config, train_device);
+
+        // Train with forward functions
+        let output = trainer.fit_with_forward(
+            model,
+            dls,
+            |m, x| m.forward(x),
+            |m, x| m.forward(x),
+        )?;
+
+        // Store the trained model
+        let inner_model = output.model.valid();
+        self.trained_model = Some(TrainedForecastModel::TSTPlus(inner_model));
+
+        Ok(ForecastMetrics {
+            train_losses: output.train_losses,
+            valid_losses: output.valid_losses,
+            best_valid_loss: output.best_valid_loss,
+            best_epoch: output.best_epoch,
+            training_time_secs: output.training_time_secs,
         })
     }
 
     /// Forecast future values.
     ///
-    /// Note: Returns placeholder zeros until forecasting models are implemented.
+    /// # Arguments
+    ///
+    /// * `x` - Input data of shape (n_samples, n_vars, seq_len)
+    ///
+    /// # Returns
+    ///
+    /// Predictions of shape (n_samples, horizon)
     pub fn predict(&self, x: &Array3<f32>) -> Result<Array2<f32>> {
-        if !self.is_fitted {
-            return Err(TrainError::Other("Model not fitted. Call fit() first.".to_string()));
-        }
+        let model = self.trained_model.as_ref().ok_or_else(|| {
+            TrainError::Other("Model not fitted. Call fit() first.".to_string())
+        })?;
 
-        let n_samples = x.shape()[0];
-        Ok(Array2::zeros((n_samples, self.config.horizon)))
+        let (n_samples, n_vars, seq_len) = (x.shape()[0], x.shape()[1], x.shape()[2]);
+
+        // Convert ndarray to Burn tensor
+        let data: Vec<f32> = x.iter().copied().collect();
+        let tensor_data = burn::tensor::TensorData::new(data, [n_samples, n_vars, seq_len]);
+        let tensor: Tensor<InferBackend, 3> = Tensor::from_data(tensor_data, &self.device);
+
+        // Run inference
+        let preds = model.forward(tensor);
+
+        // Convert back to ndarray
+        let preds_data: Vec<f32> = preds.into_data().to_vec().unwrap();
+        let result = Array2::from_shape_vec((n_samples, self.config.horizon), preds_data)
+            .map_err(|e| TrainError::Other(e.to_string()))?;
+
+        Ok(result)
+    }
+
+    /// Get the config.
+    pub fn config(&self) -> &TSForecasterConfig {
+        &self.config
     }
 
     /// Get the forecast horizon.
@@ -911,8 +1153,23 @@ impl TSForecaster {
 
     /// Check if fitted.
     pub fn is_fitted(&self) -> bool {
-        self.is_fitted
+        self.trained_model.is_some()
     }
+}
+
+/// Forecasting training metrics returned after fitting.
+#[derive(Debug, Clone)]
+pub struct ForecastMetrics {
+    /// Training losses (MSE) per epoch.
+    pub train_losses: Vec<f32>,
+    /// Validation losses (MSE) per epoch.
+    pub valid_losses: Vec<f32>,
+    /// Best validation loss achieved.
+    pub best_valid_loss: f32,
+    /// Epoch with best validation loss.
+    pub best_epoch: usize,
+    /// Total training time in seconds.
+    pub training_time_secs: f64,
 }
 
 #[cfg(test)]

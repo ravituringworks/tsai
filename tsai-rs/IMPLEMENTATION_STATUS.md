@@ -148,7 +148,7 @@ All transforms (TimeWarp, CutOut, GaussianNoise, MagScale, MixUp, CutMix, etc.) 
 - **compat.rs facades**:
   - TSClassifier: Fully implemented with InceptionTimePlus, OmniScaleCNN, and TSTPlus support
   - TSRegressor: Fully implemented with MSE loss training and InceptionTimePlus, OmniScaleCNN, TSTPlus support
-  - TSForecaster: Placeholder with API ready (needs forecasting model heads)
+  - TSForecaster: Fully implemented with MSE loss training and InceptionTimePlus, OmniScaleCNN, TSTPlus support
 
 ### ~~Dataset Fetching~~ ✅ RESOLVED
 UCR dataset downloading is fully implemented:
@@ -192,8 +192,18 @@ tsai-rs/
 3. ~~Complete Learner orchestration methods~~ ✅
 4. ~~Implement TSClassifier in compat.rs~~ ✅
 5. ~~Implement TSRegressor with RegressionTrainer and MSE loss~~ ✅
-6. Add forecasting model output heads for TSForecaster
+6. ~~Implement TSForecaster with forecasting support~~ ✅
 7. ~~Add integration tests for training pipelines~~ ✅
 8. Add more unit tests
 9. Add benchmark suite
 10. ~~Implement dataset downloading~~ ✅
+
+## Integration Tests
+
+All 6 integration tests pass:
+- `test_training_pipeline_synthetic` - End-to-end classification training
+- `test_tsclassifier_api` - TSClassifier sklearn-like API
+- `test_regression_training_pipeline` - End-to-end regression training
+- `test_tsregressor_api` - TSRegressor sklearn-like API
+- `test_tsforecaster_api` - TSForecaster sklearn-like API
+- `test_dataset_creation` - TSDataset creation

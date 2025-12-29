@@ -356,3 +356,86 @@ fn test_tsregressor_api() {
         assert!(val.is_finite(), "Prediction is not finite: {}", val);
     }
 }
+
+/// Create synthetic forecasting data for testing.
+fn create_synthetic_forecast_data(
+    n_samples: usize,
+    n_vars: usize,
+    seq_len: usize,
+    horizon: usize,
+) -> (Array3<f32>, Array2<f32>) {
+    use rand::prelude::*;
+    use rand_chacha::ChaCha8Rng;
+
+    let mut rng = ChaCha8Rng::seed_from_u64(42);
+
+    // Create time series where future values are related to historical pattern
+    let mut x_data = Vec::with_capacity(n_samples * n_vars * seq_len);
+    let mut y_data = Vec::with_capacity(n_samples * horizon);
+
+    for _i in 0..n_samples {
+        let trend = rng.gen::<f32>() * 0.5;
+        let base = rng.gen::<f32>() * 2.0;
+
+        // Input sequence follows a trend
+        for _v in 0..n_vars {
+            for t in 0..seq_len {
+                let value = base + trend * (t as f32) + rng.gen::<f32>() * 0.1;
+                x_data.push(value);
+            }
+        }
+
+        // Future values continue the trend
+        for h in 0..horizon {
+            let future_t = seq_len + h;
+            let value = base + trend * (future_t as f32) + rng.gen::<f32>() * 0.1;
+            y_data.push(value);
+        }
+    }
+
+    let x = Array3::from_shape_vec((n_samples, n_vars, seq_len), x_data).unwrap();
+    let y = Array2::from_shape_vec((n_samples, horizon), y_data).unwrap();
+
+    (x, y)
+}
+
+#[test]
+fn test_tsforecaster_api() {
+    use tsai_train::compat::{TSForecaster, TSForecasterConfig};
+
+    // Create synthetic forecasting data
+    let horizon = 8;
+    let (x, y) = create_synthetic_forecast_data(32, 2, 50, horizon);
+
+    // Create forecaster with minimal epochs for fast testing
+    let config = TSForecasterConfig {
+        arch: "InceptionTimePlus".to_string(),
+        horizon,
+        n_epochs: 1,
+        lr: 1e-3,
+        batch_size: 8,
+        valid_ratio: 0.25,
+        seed: 42,
+    };
+
+    let mut forecaster = TSForecaster::new(config);
+
+    // Fit
+    let result = forecaster.fit(&x, &y);
+    assert!(result.is_ok(), "TSForecaster.fit failed: {:?}", result.err());
+
+    // Verify fitted
+    assert!(forecaster.is_fitted());
+    assert_eq!(forecaster.horizon(), horizon);
+
+    // Test predict
+    let preds = forecaster.predict(&x);
+    assert!(preds.is_ok());
+    let preds = preds.unwrap();
+    assert_eq!(preds.shape(), &[32, horizon]);
+
+    // Verify predictions are finite
+    for val in preds.iter() {
+        assert!(val.is_finite(), "Forecast is not finite: {}", val);
+    }
+}
