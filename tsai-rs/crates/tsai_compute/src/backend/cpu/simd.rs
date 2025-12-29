@@ -40,18 +40,18 @@ impl SimdDispatch {
     ///
     /// Calls the appropriate function based on the detected SIMD level.
     #[inline]
-    pub fn dispatch<T, F_AVX512, F_AVX2, F_NEON, F_SCALAR>(
+    pub fn dispatch<T, FAvx512, FAvx2, FNeon, FScalar>(
         &self,
-        avx512_fn: F_AVX512,
-        avx2_fn: F_AVX2,
-        neon_fn: F_NEON,
-        scalar_fn: F_SCALAR,
+        avx512_fn: FAvx512,
+        avx2_fn: FAvx2,
+        neon_fn: FNeon,
+        scalar_fn: FScalar,
     ) -> T
     where
-        F_AVX512: FnOnce() -> T,
-        F_AVX2: FnOnce() -> T,
-        F_NEON: FnOnce() -> T,
-        F_SCALAR: FnOnce() -> T,
+        FAvx512: FnOnce() -> T,
+        FAvx2: FnOnce() -> T,
+        FNeon: FnOnce() -> T,
+        FScalar: FnOnce() -> T,
     {
         match self.level {
             SimdLevel::Avx512 => avx512_fn(),

@@ -124,6 +124,7 @@ impl Default for MTFConfig {
 /// MTF encodes the transition probabilities between quantile bins.
 #[derive(Debug, Clone)]
 pub struct TSToMTF {
+    #[allow(dead_code)] // Config stored for future resizing implementation
     config: MTFConfig,
 }
 
@@ -173,6 +174,7 @@ impl Default for GAFConfig {
 /// Converts time series to Gramian Angular Summation Field images.
 #[derive(Debug, Clone)]
 pub struct TSToGASF {
+    #[allow(dead_code)] // Config stored for future resizing implementation
     config: GAFConfig,
 }
 
@@ -225,6 +227,7 @@ impl TSToGASF {
 /// Converts time series to Gramian Angular Difference Field images.
 #[derive(Debug, Clone)]
 pub struct TSToGADF {
+    #[allow(dead_code)] // Config stored for future resizing implementation
     config: GAFConfig,
 }
 

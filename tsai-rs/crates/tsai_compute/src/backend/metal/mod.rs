@@ -320,10 +320,12 @@ impl Buffer for MetalBuffer {
 
 /// Metal command encoder.
 pub struct MetalCommandEncoder {
+    #[allow(dead_code)] // Used in full Metal implementation
     device: MetalDeviceInner,
     commands: Vec<MetalCommand>,
 }
 
+#[allow(dead_code)] // Command data stored for execution in full Metal implementation
 enum MetalCommand {
     CopyHostToDevice {
         data: Vec<u8>,
@@ -404,6 +406,7 @@ pub struct MetalFence {
     completed: Arc<AtomicBool>,
 }
 
+#[allow(dead_code)] // Methods for full Metal implementation
 impl MetalFence {
     fn new() -> Self {
         Self {

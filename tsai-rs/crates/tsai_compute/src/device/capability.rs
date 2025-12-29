@@ -173,41 +173,67 @@ impl Default for DeviceCapabilities {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceFeature {
     // CPU SIMD features
+    /// SSE2 SIMD instructions.
     Sse2,
+    /// SSE4 SIMD instructions.
     Sse4,
+    /// AVX SIMD instructions.
     Avx,
+    /// AVX2 SIMD instructions.
     Avx2,
+    /// AVX-512 SIMD instructions.
     Avx512,
+    /// Fused multiply-add instructions.
     Fma,
+    /// ARM NEON SIMD instructions.
     Neon,
+    /// ARM SVE SIMD instructions.
     Sve,
 
     // NUMA
+    /// NUMA topology awareness.
     NumaAwareness,
 
     // Precision features
+    /// 16-bit floating point support.
     Float16,
+    /// Brain floating point (bfloat16) support.
     BFloat16,
+    /// 64-bit floating point support.
     Float64,
+    /// 8-bit integer compute support.
     Int8Compute,
 
     // GPU-specific features
+    /// NVIDIA tensor cores or AMD matrix cores.
     TensorCores,
+    /// Ray tracing acceleration.
     RayTracing,
+    /// Mesh shader support.
     MeshShaders,
 
     // Memory features
+    /// Shared memory between compute units.
     SharedMemory,
+    /// Unified memory address space.
     UnifiedMemory,
+    /// Pinned host memory for fast transfers.
     PinnedMemory,
+    /// Managed memory with automatic migration.
     ManagedMemory,
+    /// Asynchronous memory transfers.
     AsyncTransfer,
+    /// Peer-to-peer device communication.
     PeerToPeer,
 
     // Execution features
+    /// Asynchronous compute capability.
     AsyncCompute,
+    /// Multiple command queue support.
     MultiQueue,
+    /// Subgroup/warp operations.
     Subgroups,
+    /// Cooperative group operations.
     CooperativeGroups,
 }
 

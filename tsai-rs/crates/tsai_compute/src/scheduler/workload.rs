@@ -31,6 +31,7 @@ impl DeviceHistory {
         self.execution_count.fetch_add(1, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)] // Reserved for adaptive scheduling implementation
     fn average_ns(&self) -> Option<u64> {
         let count = self.execution_count.load(Ordering::Relaxed);
         if count == 0 {
