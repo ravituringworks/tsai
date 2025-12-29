@@ -2,20 +2,54 @@
 //!
 //! This backend provides GPU computation via AMD ROCm/HIP,
 //! supporting AMD Radeon and Instinct GPUs.
+//!
+//! Note: This is a stub implementation. Full ROCm support requires
+//! integration with the HIP runtime API (rocm-rs crate when stable).
 
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::backend::{CommandEncoder, ComputeBackend, Fence};
-use crate::device::{ComputeDevice, DeviceCapabilities, DeviceId, DeviceType};
+use crate::device::{ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceId, DeviceType};
 use crate::error::{ComputeError, ComputeResult};
 use crate::memory::{Buffer, BufferMapping, BufferUsage};
 
 /// ROCm device representation.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RocmDevice {
     id: DeviceId,
     name: String,
     capabilities: DeviceCapabilities,
+}
+
+impl Hash for RocmDevice {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for RocmDevice {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for RocmDevice {}
+
+impl RocmDevice {
+    /// Create a ROCm device (stub).
+    #[allow(dead_code)]
+    fn new(index: u32, name: String, gcn_arch: String) -> Self {
+        let mut capabilities = DeviceCapabilities::default();
+        capabilities.compute_version = ComputeVersion::Rocm { gcn_arch };
+        capabilities.vendor = "AMD".to_string();
+
+        Self {
+            id: DeviceId::rocm(index),
+            name,
+            capabilities,
+        }
+    }
 }
 
 impl ComputeDevice for RocmDevice {
@@ -71,34 +105,79 @@ impl Buffer for RocmBuffer {
     fn is_mapped(&self) -> bool {
         false
     }
+
+    fn raw_ptr(&self) -> Option<*mut u8> {
+        None
+    }
 }
 
 /// ROCm command encoder.
+#[allow(dead_code)]
 pub struct RocmCommandEncoder {
-    commands: Vec<()>,
+    commands: Vec<RocmCommand>,
+}
+
+#[allow(dead_code)]
+enum RocmCommand {
+    CopyHostToDevice { data: Vec<u8>, offset: usize },
+    CopyDeviceToHost { offset: usize, size: usize },
+    CopyBufferToBuffer { src_offset: usize, dst_offset: usize, size: usize },
+    FillBuffer { offset: usize, size: usize, value: u8 },
+    Barrier,
 }
 
 impl CommandEncoder for RocmCommandEncoder {
     type Buffer = RocmBuffer;
 
-    fn copy_host_to_device(&mut self, _src: &[u8], _dst: &Self::Buffer, _offset: usize) {}
-    fn copy_device_to_host(&mut self, _src: &Self::Buffer, _dst: &mut [u8], _offset: usize) {}
+    fn copy_host_to_device(&mut self, src: &[u8], _dst: &Self::Buffer, offset: usize) {
+        self.commands.push(RocmCommand::CopyHostToDevice {
+            data: src.to_vec(),
+            offset,
+        });
+    }
+
+    fn copy_device_to_host(&mut self, _src: &Self::Buffer, _dst: &mut [u8], offset: usize) {
+        self.commands.push(RocmCommand::CopyDeviceToHost {
+            offset,
+            size: 0,
+        });
+    }
+
     fn copy_buffer_to_buffer(
         &mut self,
         _src: &Self::Buffer,
-        _src_offset: usize,
+        src_offset: usize,
         _dst: &Self::Buffer,
-        _dst_offset: usize,
-        _size: usize,
+        dst_offset: usize,
+        size: usize,
     ) {
+        self.commands.push(RocmCommand::CopyBufferToBuffer {
+            src_offset,
+            dst_offset,
+            size,
+        });
     }
-    fn fill_buffer(&mut self, _buffer: &Self::Buffer, _offset: usize, _size: usize, _value: u8) {}
-    fn barrier(&mut self) {}
+
+    fn fill_buffer(&mut self, _buffer: &Self::Buffer, offset: usize, size: usize, value: u8) {
+        self.commands.push(RocmCommand::FillBuffer { offset, size, value });
+    }
+
+    fn barrier(&mut self) {
+        self.commands.push(RocmCommand::Barrier);
+    }
 }
 
 /// ROCm fence.
 pub struct RocmFence {
     completed: AtomicBool,
+}
+
+impl RocmFence {
+    fn new_signaled() -> Self {
+        Self {
+            completed: AtomicBool::new(true),
+        }
+    }
 }
 
 impl Fence for RocmFence {
@@ -114,8 +193,10 @@ impl Fence for RocmFence {
 
     fn wait_timeout(&self, timeout_ms: u64) -> bool {
         let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_millis(timeout_ms);
+
         while !self.is_signaled() {
-            if start.elapsed() >= std::time::Duration::from_millis(timeout_ms) {
+            if start.elapsed() >= timeout {
                 return false;
             }
             std::thread::yield_now();
@@ -141,48 +222,103 @@ impl ComputeBackend for RocmBackend {
     }
 
     fn enumerate_devices() -> ComputeResult<Vec<Self::Device>> {
-        Err(ComputeError::BackendInitFailed(
-            "ROCm support not yet implemented".to_string(),
-        ))
+        #[cfg(feature = "rocm")]
+        {
+            // Note: Full ROCm implementation requires:
+            // 1. hipGetDeviceCount() to get device count
+            // 2. hipGetDeviceProperties() for each device
+            // 3. Create HIP context
+            // This is a placeholder that returns an error
+            Err(ComputeError::DiscoveryFailed(
+                "ROCm device enumeration requires HIP integration (not yet implemented)".to_string(),
+            ))
+        }
+
+        #[cfg(not(feature = "rocm"))]
+        {
+            Err(ComputeError::BackendInitFailed(
+                "ROCm support not compiled (enable 'rocm' feature)".to_string(),
+            ))
+        }
     }
 
-    fn new(_device: &Self::Device) -> ComputeResult<Self> {
-        Err(ComputeError::BackendInitFailed(
-            "ROCm backend not yet implemented".to_string(),
-        ))
+    fn new(device: &Self::Device) -> ComputeResult<Self> {
+        #[cfg(feature = "rocm")]
+        {
+            // Placeholder - would need to create HIP context
+            Ok(Self {
+                device: device.clone(),
+                rng_seed: AtomicU64::new(0),
+            })
+        }
+
+        #[cfg(not(feature = "rocm"))]
+        {
+            let _ = device;
+            Err(ComputeError::BackendInitFailed(
+                "ROCm support not compiled".to_string(),
+            ))
+        }
     }
 
     fn device(&self) -> &Self::Device {
         &self.device
     }
 
-    fn allocate_buffer(&self, _size: usize, _usage: BufferUsage) -> ComputeResult<Self::Buffer> {
-        Err(ComputeError::BackendInitFailed(
-            "ROCm backend not yet implemented".to_string(),
-        ))
+    fn allocate_buffer(&self, size: usize, usage: BufferUsage) -> ComputeResult<Self::Buffer> {
+        #[cfg(feature = "rocm")]
+        {
+            // Placeholder - would use hipMalloc
+            Ok(RocmBuffer {
+                size,
+                usage,
+                device_id: self.device.device_id(),
+            })
+        }
+
+        #[cfg(not(feature = "rocm"))]
+        {
+            let _ = (size, usage);
+            Err(ComputeError::BackendInitFailed(
+                "ROCm support not compiled".to_string(),
+            ))
+        }
     }
 
     fn create_encoder(&self) -> ComputeResult<Self::CommandEncoder> {
-        Err(ComputeError::BackendInitFailed(
-            "ROCm backend not yet implemented".to_string(),
-        ))
+        Ok(RocmCommandEncoder {
+            commands: Vec::new(),
+        })
     }
 
     fn submit(&self, _encoder: Self::CommandEncoder) -> ComputeResult<Self::Fence> {
-        Err(ComputeError::BackendInitFailed(
-            "ROCm backend not yet implemented".to_string(),
-        ))
+        // Placeholder - would submit to HIP stream
+        Ok(RocmFence::new_signaled())
     }
 
-    fn wait(&self, _fence: &Self::Fence) -> ComputeResult<()> {
+    fn wait(&self, fence: &Self::Fence) -> ComputeResult<()> {
+        fence.wait();
         Ok(())
     }
 
     fn synchronize(&self) -> ComputeResult<()> {
+        // Placeholder - would call hipDeviceSynchronize
         Ok(())
     }
 
     fn seed(&self, seed: u64) {
         self.rng_seed.store(seed, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rocm_not_available() {
+        // Without rocm feature, enumeration should fail gracefully
+        let result = RocmBackend::enumerate_devices();
+        assert!(result.is_err());
     }
 }

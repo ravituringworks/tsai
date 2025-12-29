@@ -3,6 +3,7 @@
 //! This backend provides GPU computation via NVIDIA CUDA,
 //! supporting all CUDA-capable NVIDIA GPUs.
 
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::backend::{CommandEncoder, ComputeBackend, Fence};
@@ -14,16 +15,30 @@ use crate::error::{BackendKind, ComputeError, ComputeResult};
 use crate::memory::{Buffer, BufferMapping, BufferUsage};
 
 #[cfg(feature = "cuda")]
-use cudarc::driver::{CudaDevice as CudarcDevice, CudaSlice, DevicePtr};
+use cudarc::driver::{CudaDevice as CudarcDevice, CudaSlice};
 
 /// CUDA device representation.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct CudaDevice {
     id: DeviceId,
     name: String,
     capabilities: DeviceCapabilities,
     ordinal: usize,
 }
+
+impl Hash for CudaDevice {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for CudaDevice {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for CudaDevice {}
 
 impl CudaDevice {
     /// Create a CUDA device for a specific ordinal.

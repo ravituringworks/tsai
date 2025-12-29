@@ -62,8 +62,19 @@ burn = { version = "0.16", optional = true }
 # Metal (macOS/iOS only)
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5"
-objc2-foundation = "0.2"
-objc2-metal = "0.2"
+objc2-foundation = { version = "0.2", features = ["NSString", "NSRange"] }
+objc2-metal = { version = "0.2", features = [
+    "MTLDevice",
+    "MTLBuffer",
+    "MTLResource",
+    "MTLCommandQueue",
+    "MTLCommandBuffer",
+    "MTLCommandEncoder",
+    "MTLBlitCommandEncoder",
+    "MTLTypes",
+    "block2",
+    "std",
+] }
 block2 = "0.5"
 
 [dev-dependencies]
