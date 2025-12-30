@@ -81,11 +81,10 @@ block2 = "0.5"
 criterion = { version = "0.5", features = ["html_reports"] }
 approx = "0.5"
 
-# Benchmarks (uncomment when implemented)
-# [[bench]]
-# name = "device_discovery"
-# harness = false
-#
-# [[bench]]
-# name = "memory_ops"
-# harness = false
+[[bench]]
+name = "simd_ops"
+harness = false
+
+[[bench]]
+name = "device_ops"
+harness = false
