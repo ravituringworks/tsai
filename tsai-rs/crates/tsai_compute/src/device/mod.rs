@@ -76,6 +76,8 @@ pub enum DeviceType {
     VulkanGpu = 4,
     /// OpenCL-compatible device.
     OpenClDevice = 5,
+    /// Apple Silicon via MLX framework.
+    MlxGpu = 6,
 }
 
 impl DeviceType {
@@ -93,8 +95,10 @@ impl DeviceType {
     }
 
     /// Get the priority score for device selection (higher is better).
+    /// MLX gets highest priority on macOS due to unified memory and Apple Silicon optimization.
     pub fn priority_score(&self) -> i32 {
         match self {
+            DeviceType::MlxGpu => 11000,   // Highest on macOS - unified memory, optimized for Apple Silicon
             DeviceType::CudaGpu => 10000,
             DeviceType::RocmGpu => 9000,
             DeviceType::MetalGpu => 8000,
@@ -114,6 +118,7 @@ impl fmt::Display for DeviceType {
             DeviceType::MetalGpu => write!(f, "Metal"),
             DeviceType::VulkanGpu => write!(f, "Vulkan"),
             DeviceType::OpenClDevice => write!(f, "OpenCL"),
+            DeviceType::MlxGpu => write!(f, "MLX"),
         }
     }
 }
@@ -176,6 +181,16 @@ impl DeviceId {
     /// Create a ROCm GPU device ID.
     pub fn rocm(index: u32) -> Self {
         Self::new(DeviceType::RocmGpu, index)
+    }
+
+    /// Create an MLX CPU device ID.
+    pub fn mlx_cpu(index: u32) -> Self {
+        Self::new(DeviceType::Cpu, index)
+    }
+
+    /// Create an MLX GPU device ID.
+    pub fn mlx_gpu(index: u32) -> Self {
+        Self::new(DeviceType::MlxGpu, index)
     }
 }
 

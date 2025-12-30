@@ -20,6 +20,9 @@ pub mod opencl;
 #[cfg(feature = "rocm")]
 pub mod rocm;
 
+#[cfg(all(feature = "mlx", target_os = "macos"))]
+pub mod mlx;
+
 use crate::device::ComputeDevice;
 use crate::error::ComputeResult;
 use crate::memory::{Buffer, BufferUsage};

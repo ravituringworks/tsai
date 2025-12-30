@@ -21,12 +21,14 @@ metal = []  # Uses target-specific deps below
 vulkan = ["ash", "gpu-allocator"]
 opencl = ["opencl3"]
 rocm = []  # rocm-rs not yet stable, placeholder
+mlx = ["mlx-rs"]  # Apple MLX framework (macOS only)
 
 # Burn integration
 burn-bridge = ["burn"]
 
 # Convenience features
 all-gpu = ["cuda", "metal", "vulkan", "opencl", "rocm"]
+all-gpu-macos = ["metal", "mlx"]  # macOS-specific GPU backends
 full = ["cpu", "numa", "all-gpu", "burn-bridge"]
 
 [dependencies]
@@ -76,6 +78,9 @@ objc2-metal = { version = "0.2", features = [
     "std",
 ] }
 block2 = "0.5"
+
+# MLX (Apple Silicon ML framework - macOS only)
+mlx-rs = { version = "0.25", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

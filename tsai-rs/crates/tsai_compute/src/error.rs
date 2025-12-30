@@ -120,6 +120,8 @@ pub enum BackendKind {
     OpenCl,
     /// AMD ROCm backend.
     Rocm,
+    /// Apple MLX backend.
+    Mlx,
 }
 
 impl fmt::Display for BackendKind {
@@ -131,6 +133,7 @@ impl fmt::Display for BackendKind {
             BackendKind::Vulkan => write!(f, "Vulkan"),
             BackendKind::OpenCl => write!(f, "OpenCL"),
             BackendKind::Rocm => write!(f, "ROCm"),
+            BackendKind::Mlx => write!(f, "MLX"),
         }
     }
 }
@@ -189,6 +192,13 @@ impl From<ash::vk::Result> for ComputeError {
 impl From<opencl3::error_codes::ClError> for ComputeError {
     fn from(err: opencl3::error_codes::ClError) -> Self {
         ComputeError::backend(BackendKind::OpenCl, format!("{:?}", err))
+    }
+}
+
+#[cfg(feature = "mlx")]
+impl From<mlx_rs::error::Exception> for ComputeError {
+    fn from(err: mlx_rs::error::Exception) -> Self {
+        ComputeError::backend(BackendKind::Mlx, err.to_string())
     }
 }
 

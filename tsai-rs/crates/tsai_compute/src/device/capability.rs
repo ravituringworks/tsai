@@ -235,6 +235,12 @@ pub enum DeviceFeature {
     Subgroups,
     /// Cooperative group operations.
     CooperativeGroups,
+
+    // General compute features
+    /// General compute capability.
+    Compute,
+    /// Discrete GPU (not integrated).
+    DiscreteGpu,
 }
 
 impl fmt::Display for DeviceFeature {
@@ -266,6 +272,8 @@ impl fmt::Display for DeviceFeature {
             DeviceFeature::MultiQueue => write!(f, "MultiQueue"),
             DeviceFeature::Subgroups => write!(f, "Subgroups"),
             DeviceFeature::CooperativeGroups => write!(f, "CoopGroups"),
+            DeviceFeature::Compute => write!(f, "Compute"),
+            DeviceFeature::DiscreteGpu => write!(f, "DiscreteGPU"),
         }
     }
 }
@@ -354,6 +362,12 @@ pub enum ComputeVersion {
         gfx_arch: String,
     },
 
+    /// Apple MLX framework.
+    Mlx {
+        /// MLX version string (e.g., "0.25").
+        version: String,
+    },
+
     /// Unknown or unspecified.
     Unknown,
 }
@@ -378,6 +392,11 @@ impl ComputeVersion {
     pub fn opencl(major: u32, minor: u32) -> Self {
         ComputeVersion::OpenCl { major, minor }
     }
+
+    /// Create an MLX version.
+    pub fn mlx(version: impl Into<String>) -> Self {
+        ComputeVersion::Mlx { version: version.into() }
+    }
 }
 
 impl fmt::Display for ComputeVersion {
@@ -394,6 +413,7 @@ impl fmt::Display for ComputeVersion {
             }
             ComputeVersion::OpenCl { major, minor } => write!(f, "OpenCL {}.{}", major, minor),
             ComputeVersion::Rocm { gfx_arch } => write!(f, "ROCm {}", gfx_arch),
+            ComputeVersion::Mlx { version } => write!(f, "MLX {}", version),
             ComputeVersion::Unknown => write!(f, "Unknown"),
         }
     }

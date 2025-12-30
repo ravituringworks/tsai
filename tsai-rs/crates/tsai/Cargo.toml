@@ -42,6 +42,7 @@ backend-tch = [
     "tsai_analysis/backend-tch",
     "tsai_explain/backend-tch",
 ]
+backend-mlx = ["burn-mlx"]
 wandb = ["tsai_train/wandb"]
 
 [dependencies]
@@ -55,6 +56,7 @@ tsai_explain = { workspace = true }
 
 burn = { workspace = true }
 burn-wgpu = { workspace = true, optional = true }
+burn-mlx = { workspace = true, optional = true }
 
 [dev-dependencies]
 approx = { workspace = true }
@@ -107,3 +109,13 @@ path = "../../examples/sklearn_api.rs"
 name = "train_ucr_metal"
 path = "../../examples/train_ucr_metal.rs"
 required-features = ["backend-wgpu"]
+
+[[example]]
+name = "train_ucr_mlx"
+path = "../../examples/train_ucr_mlx.rs"
+required-features = ["backend-mlx"]
+
+[[example]]
+name = "mlx_tensors"
+path = "../../examples/mlx_tensors.rs"
+required-features = ["backend-mlx"]
