@@ -3,14 +3,24 @@
 //! This backend provides GPU computation via AMD ROCm/HIP,
 //! supporting AMD Radeon and Instinct GPUs.
 //!
-//! Note: This is a stub implementation. Full ROCm support requires
-//! integration with the HIP runtime API (rocm-rs crate when stable).
+//! ## Detection Method
+//!
+//! On Linux, AMD GPUs are detected via sysfs at `/sys/class/drm/card*/device/`.
+//! The backend checks for AMD vendor ID (0x1002) and extracts device information.
+//!
+//! ## Feature Flag
+//!
+//! Enable the `rocm` feature to use this backend:
+//! ```toml
+//! [dependencies]
+//! tsai_compute = { version = "0.1", features = ["rocm"] }
+//! ```
 
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::backend::{CommandEncoder, ComputeBackend, Fence};
-use crate::device::{ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceId, DeviceType};
+use crate::device::{ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceFeature, DeviceId, DeviceType};
 use crate::error::{ComputeError, ComputeResult};
 use crate::memory::{Buffer, BufferMapping, BufferUsage};
 
@@ -36,13 +46,172 @@ impl PartialEq for RocmDevice {
 
 impl Eq for RocmDevice {}
 
+/// Detect AMD GPUs by scanning sysfs on Linux.
+#[cfg(all(feature = "rocm", target_os = "linux"))]
+fn detect_amd_gpus_sysfs() -> ComputeResult<Vec<RocmDevice>> {
+    use std::fs;
+    use std::path::Path;
+
+    const AMD_VENDOR_ID: &str = "0x1002";
+    let drm_path = Path::new("/sys/class/drm");
+
+    if !drm_path.exists() {
+        return Err(ComputeError::DiscoveryFailed(
+            "sysfs DRM path not found".to_string(),
+        ));
+    }
+
+    let mut devices = Vec::new();
+    let mut device_index = 0u32;
+
+    // Iterate over card* directories
+    let entries = fs::read_dir(drm_path).map_err(|e| {
+        ComputeError::DiscoveryFailed(format!("Failed to read DRM directory: {}", e))
+    })?;
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Only process card* entries (not renderD*)
+        if !name_str.starts_with("card") || name_str.contains('-') {
+            continue;
+        }
+
+        let device_path = entry.path().join("device");
+
+        // Check vendor ID
+        let vendor_path = device_path.join("vendor");
+        if let Ok(vendor) = fs::read_to_string(&vendor_path) {
+            let vendor = vendor.trim();
+            if vendor != AMD_VENDOR_ID {
+                continue; // Not an AMD GPU
+            }
+        } else {
+            continue;
+        }
+
+        // Get device ID
+        let device_id = fs::read_to_string(device_path.join("device"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        // Try to get device name from uevent
+        let device_name = fs::read_to_string(device_path.join("uevent"))
+            .ok()
+            .and_then(|content| {
+                for line in content.lines() {
+                    if line.starts_with("PCI_SLOT_NAME=") {
+                        return Some(format!("AMD GPU [{}]", line.split('=').nth(1)?));
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| format!("AMD GPU {}", device_id));
+
+        // Try to get GFX architecture from various sources
+        let gfx_arch = detect_gfx_arch(&device_path, &device_id);
+
+        // Try to get memory size from hwmon or mem_info
+        let memory_bytes = detect_gpu_memory(&device_path);
+
+        devices.push(RocmDevice::new(device_index, device_name, gfx_arch, memory_bytes));
+        device_index += 1;
+    }
+
+    Ok(devices)
+}
+
+/// Detect GFX architecture from sysfs or device ID mapping.
+#[cfg(all(feature = "rocm", target_os = "linux"))]
+fn detect_gfx_arch(device_path: &std::path::Path, device_id: &str) -> String {
+    use std::fs;
+
+    // Try to read from amdgpu specific files
+    if let Ok(arch) = fs::read_to_string(device_path.join("gpu_id")) {
+        return arch.trim().to_string();
+    }
+
+    // Map known device IDs to GFX architectures (common AMD GPUs)
+    // Format: 0xXXXX
+    let arch = match device_id.to_lowercase().as_str() {
+        // RDNA 3 (gfx1100 series)
+        "0x744c" | "0x7480" => "gfx1100",  // RX 7900 series
+        "0x7470" => "gfx1101",              // RX 7700/7800
+        "0x7460" => "gfx1102",              // RX 7600
+
+        // RDNA 2 (gfx1030 series)
+        "0x73bf" | "0x73a5" => "gfx1030",  // RX 6900/6800
+        "0x73df" | "0x73af" => "gfx1031",  // RX 6700
+        "0x73ff" | "0x73ef" => "gfx1032",  // RX 6600
+
+        // RDNA 1 (gfx1010 series)
+        "0x731f" | "0x7340" => "gfx1010",  // RX 5700
+        "0x7360" => "gfx1011",              // RX 5600
+        "0x7310" => "gfx1012",              // RX 5500
+
+        // Vega (gfx900 series)
+        "0x687f" | "0x6867" => "gfx900",   // Vega 64/56
+        "0x66af" => "gfx906",               // Radeon VII
+
+        // MI series (data center)
+        "0x7408" => "gfx90a",               // MI200 series
+        "0x740f" => "gfx940",               // MI300 series
+
+        _ => "unknown",
+    };
+
+    arch.to_string()
+}
+
+/// Detect GPU memory size from sysfs.
+#[cfg(all(feature = "rocm", target_os = "linux"))]
+fn detect_gpu_memory(device_path: &std::path::Path) -> u64 {
+    use std::fs;
+
+    // Try amdgpu specific memory info
+    let mem_info_path = device_path.join("mem_info_vram_total");
+    if let Ok(mem_str) = fs::read_to_string(&mem_info_path) {
+        if let Ok(bytes) = mem_str.trim().parse::<u64>() {
+            return bytes;
+        }
+    }
+
+    // Try hwmon temperature sensor directory (often contains memory info)
+    if let Ok(entries) = fs::read_dir(device_path.join("hwmon")) {
+        for entry in entries.flatten() {
+            let mem_path = entry.path().join("mem1_input");
+            if let Ok(mem_str) = fs::read_to_string(&mem_path) {
+                if let Ok(mb) = mem_str.trim().parse::<u64>() {
+                    return mb * 1024 * 1024; // Convert MB to bytes
+                }
+            }
+        }
+    }
+
+    // Default: unknown memory (return 0)
+    0
+}
+
 impl RocmDevice {
-    /// Create a ROCm device (stub).
-    #[allow(dead_code)]
-    fn new(index: u32, name: String, gcn_arch: String) -> Self {
+    /// Create a ROCm device with detected information.
+    fn new(index: u32, name: String, gfx_arch: String, memory_bytes: u64) -> Self {
         let mut capabilities = DeviceCapabilities::default();
-        capabilities.compute_version = ComputeVersion::Rocm { gcn_arch };
+        capabilities.compute_version = ComputeVersion::Rocm { gfx_arch: gfx_arch.clone() };
         capabilities.vendor = "AMD".to_string();
+        capabilities.total_memory = memory_bytes;
+        capabilities.available_memory = memory_bytes;
+
+        // Determine compute capability based on GFX architecture
+        if gfx_arch.starts_with("gfx9") || gfx_arch.starts_with("gfx10") || gfx_arch.starts_with("gfx11") {
+            capabilities.features.insert(DeviceFeature::Compute);
+            capabilities.features.insert(DeviceFeature::Float16);
+            capabilities.features.insert(DeviceFeature::Float32);
+            capabilities.features.insert(DeviceFeature::Float64);
+        }
+
+        // Mark as discrete GPU
+        capabilities.features.insert(DeviceFeature::DiscreteGpu);
 
         Self {
             id: DeviceId::rocm(index),
@@ -224,14 +393,19 @@ impl ComputeBackend for RocmBackend {
     fn enumerate_devices() -> ComputeResult<Vec<Self::Device>> {
         #[cfg(feature = "rocm")]
         {
-            // Note: Full ROCm implementation requires:
-            // 1. hipGetDeviceCount() to get device count
-            // 2. hipGetDeviceProperties() for each device
-            // 3. Create HIP context
-            // This is a placeholder that returns an error
-            Err(ComputeError::DiscoveryFailed(
-                "ROCm device enumeration requires HIP integration (not yet implemented)".to_string(),
-            ))
+            // Detect AMD GPUs via sysfs on Linux
+            #[cfg(target_os = "linux")]
+            {
+                detect_amd_gpus_sysfs()
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            {
+                // ROCm is primarily Linux-only
+                Err(ComputeError::BackendInitFailed(
+                    "ROCm is only supported on Linux".to_string(),
+                ))
+            }
         }
 
         #[cfg(not(feature = "rocm"))]

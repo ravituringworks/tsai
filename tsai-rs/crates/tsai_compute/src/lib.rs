@@ -62,7 +62,7 @@ pub use device::{
     ComputeDevice, DeviceCapabilities, DeviceFeature, DeviceId, DevicePool, DeviceType,
     SelectionStrategy, SimdLevel,
 };
-pub use discovery::{get_device_pool, HardwareDiscovery};
+pub use discovery::{get_device_pool, get_discovery_time_us, refresh_device_pool, HardwareDiscovery};
 pub use error::{ComputeError, ComputeResult};
 pub use memory::{Buffer, BufferUsage, MemoryPool};
 pub use scheduler::{Priority, RoundRobinScheduler, Scheduler, SimpleScheduler, Workload, WorkloadScheduler};

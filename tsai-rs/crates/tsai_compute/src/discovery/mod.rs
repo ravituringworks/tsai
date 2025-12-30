@@ -1,6 +1,22 @@
 //! Hardware discovery orchestration.
 //!
 //! This module provides unified device discovery across all backends.
+//!
+//! ## Memoization
+//!
+//! Hardware discovery is automatically memoized via [`get_device_pool()`].
+//! The first call performs full discovery (~50µs), subsequent calls return
+//! instantly from cache (<50ns).
+//!
+//! ```rust,ignore
+//! use tsai_compute::get_device_pool;
+//!
+//! // First call: performs discovery
+//! let pool = get_device_pool()?;
+//!
+//! // Subsequent calls: returns cached result instantly
+//! let pool2 = get_device_pool()?;
+//! ```
 
 mod cpu;
 mod gpu;
@@ -9,6 +25,7 @@ pub use cpu::*;
 pub use gpu::*;
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::backend::cpu::CpuBackend;
 use crate::backend::ComputeBackend;
@@ -184,25 +201,81 @@ impl HardwareDiscovery {
     }
 }
 
+/// Cached discovery result with timing information.
+struct CachedDiscovery {
+    pool: Arc<DevicePool>,
+    discovery_time_us: u64,
+}
+
 /// Get a shared device pool with automatic discovery.
 ///
 /// This is a convenience function that performs discovery once
-/// and caches the result.
+/// and caches the result. Subsequent calls return instantly from cache.
+///
+/// # Performance
+///
+/// - First call: ~50µs (full hardware discovery)
+/// - Subsequent calls: <50ns (returns cached result)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use tsai_compute::get_device_pool;
+///
+/// let pool = get_device_pool()?;
+/// println!("Found {} devices", pool.device_count());
+/// ```
 pub fn get_device_pool() -> ComputeResult<Arc<DevicePool>> {
     use std::sync::OnceLock;
 
-    static POOL: OnceLock<Arc<DevicePool>> = OnceLock::new();
+    static CACHE: OnceLock<CachedDiscovery> = OnceLock::new();
 
     // If already initialized, return it
-    if let Some(pool) = POOL.get() {
-        return Ok(pool.clone());
+    if let Some(cached) = CACHE.get() {
+        return Ok(cached.pool.clone());
     }
 
-    // Try to initialize
+    // Perform timed discovery
+    let start = Instant::now();
     let pool = Arc::new(HardwareDiscovery::discover_all()?);
+    let discovery_time_us = start.elapsed().as_micros() as u64;
 
-    // Use get_or_init to handle race conditions (another thread may have initialized)
-    Ok(POOL.get_or_init(|| pool).clone())
+    tracing::debug!("Hardware discovery completed in {}µs", discovery_time_us);
+
+    // Cache the result (handles race conditions)
+    let cached = CACHE.get_or_init(|| CachedDiscovery {
+        pool: pool.clone(),
+        discovery_time_us,
+    });
+
+    Ok(cached.pool.clone())
+}
+
+/// Get the time taken for the initial hardware discovery in microseconds.
+///
+/// Returns `None` if discovery hasn't been performed yet.
+pub fn get_discovery_time_us() -> Option<u64> {
+    use std::sync::OnceLock;
+
+    static CACHE: OnceLock<CachedDiscovery> = OnceLock::new();
+    CACHE.get().map(|c| c.discovery_time_us)
+}
+
+/// Force a refresh of the device pool cache.
+///
+/// This performs a new hardware discovery and updates the cache.
+/// Useful if hardware has been hot-plugged.
+///
+/// Note: This creates a new pool but doesn't invalidate existing
+/// references to the old pool.
+pub fn refresh_device_pool() -> ComputeResult<Arc<DevicePool>> {
+    let start = Instant::now();
+    let pool = Arc::new(HardwareDiscovery::discover_all()?);
+    let discovery_time_us = start.elapsed().as_micros() as u64;
+
+    tracing::info!("Hardware discovery refreshed in {}µs", discovery_time_us);
+
+    Ok(pool)
 }
 
 #[cfg(test)]

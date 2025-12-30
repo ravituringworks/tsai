@@ -3,18 +3,26 @@
 //! This backend provides cross-platform GPU computation via Vulkan,
 //! supporting NVIDIA, AMD, Intel, and other Vulkan-capable GPUs.
 //!
-//! Note: This is a stub implementation. Full Vulkan support requires
-//! significant additional infrastructure (instance, device, queues, etc.)
+//! ## Feature Flag
+//!
+//! Enable the `vulkan` feature to use this backend:
+//! ```toml
+//! [dependencies]
+//! tsai_compute = { version = "0.1", features = ["vulkan"] }
+//! ```
 
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::backend::{CommandEncoder, ComputeBackend, Fence};
 use crate::device::{
-    ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceId, DeviceType,
+    ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceFeature, DeviceId, DeviceType,
 };
 use crate::error::{ComputeError, ComputeResult};
 use crate::memory::{Buffer, BufferMapping, BufferUsage};
+
+#[cfg(feature = "vulkan")]
+use ash::vk;
 
 /// Vulkan device representation.
 #[derive(Debug, Clone)]
@@ -22,6 +30,8 @@ pub struct VulkanDevice {
     id: DeviceId,
     name: String,
     capabilities: DeviceCapabilities,
+    #[cfg(feature = "vulkan")]
+    physical_device_index: usize,
 }
 
 impl Hash for VulkanDevice {
@@ -39,7 +49,51 @@ impl PartialEq for VulkanDevice {
 impl Eq for VulkanDevice {}
 
 impl VulkanDevice {
-    /// Create a Vulkan device (stub).
+    /// Create a Vulkan device from enumerated properties.
+    #[cfg(feature = "vulkan")]
+    fn from_properties(index: usize, props: &vk::PhysicalDeviceProperties) -> Self {
+        let name = unsafe {
+            std::ffi::CStr::from_ptr(props.device_name.as_ptr())
+                .to_string_lossy()
+                .into_owned()
+        };
+
+        let api_version = props.api_version;
+        let vendor_id = props.vendor_id;
+
+        let mut capabilities = DeviceCapabilities::default();
+        capabilities.compute_version = ComputeVersion::Vulkan { api_version };
+        capabilities.vendor = match vendor_id {
+            0x1002 => "AMD".to_string(),
+            0x10DE => "NVIDIA".to_string(),
+            0x8086 => "Intel".to_string(),
+            0x13B5 => "ARM".to_string(),
+            0x5143 => "Qualcomm".to_string(),
+            0x106B => "Apple".to_string(),
+            _ => format!("Unknown (0x{:04X})", vendor_id),
+        };
+
+        // Determine device type
+        let is_discrete = props.device_type == vk::PhysicalDeviceType::DISCRETE_GPU;
+        let is_integrated = props.device_type == vk::PhysicalDeviceType::INTEGRATED_GPU;
+
+        if is_discrete {
+            capabilities.features.insert(DeviceFeature::DiscreteGpu);
+        }
+
+        // Estimate compute units from limits
+        capabilities.compute_units = props.limits.max_compute_work_group_count[0].min(256) as u32;
+
+        Self {
+            id: DeviceId::vulkan(index as u32),
+            name,
+            capabilities,
+            physical_device_index: index,
+        }
+    }
+
+    /// Create a Vulkan device (non-vulkan feature fallback).
+    #[cfg(not(feature = "vulkan"))]
     #[allow(dead_code)]
     fn new(index: u32, name: String, api_version: u32) -> Self {
         let mut capabilities = DeviceCapabilities::default();
@@ -225,15 +279,82 @@ impl ComputeBackend for VulkanBackend {
     fn enumerate_devices() -> ComputeResult<Vec<Self::Device>> {
         #[cfg(feature = "vulkan")]
         {
-            // Note: Full Vulkan implementation requires:
-            // 1. Create Instance with validation layers
-            // 2. Enumerate physical devices
-            // 3. Query device properties and capabilities
-            // 4. Create logical device with compute queue
-            // This is a placeholder that returns an error
-            Err(ComputeError::DiscoveryFailed(
-                "Vulkan device enumeration requires full ash integration (not yet implemented)".to_string(),
-            ))
+            use ash::Entry;
+
+            // Load Vulkan library
+            let entry = unsafe {
+                Entry::load().map_err(|e| {
+                    ComputeError::DiscoveryFailed(format!("Failed to load Vulkan: {}", e))
+                })?
+            };
+
+            // Create a minimal instance for device enumeration
+            let app_info = vk::ApplicationInfo::default()
+                .application_name(c"tsai_compute")
+                .application_version(vk::make_api_version(0, 0, 1, 0))
+                .engine_name(c"tsai")
+                .engine_version(vk::make_api_version(0, 0, 1, 0))
+                .api_version(vk::API_VERSION_1_2);
+
+            let create_info = vk::InstanceCreateInfo::default()
+                .application_info(&app_info);
+
+            let instance = unsafe {
+                entry.create_instance(&create_info, None).map_err(|e| {
+                    ComputeError::DiscoveryFailed(format!("Failed to create Vulkan instance: {:?}", e))
+                })?
+            };
+
+            // Enumerate physical devices
+            let physical_devices = unsafe {
+                instance.enumerate_physical_devices().map_err(|e| {
+                    ComputeError::DiscoveryFailed(format!("Failed to enumerate Vulkan devices: {:?}", e))
+                })?
+            };
+
+            let mut devices = Vec::with_capacity(physical_devices.len());
+
+            for (index, physical_device) in physical_devices.iter().enumerate() {
+                let props = unsafe { instance.get_physical_device_properties(*physical_device) };
+
+                // Only include GPU devices (discrete, integrated, or virtual)
+                match props.device_type {
+                    vk::PhysicalDeviceType::DISCRETE_GPU
+                    | vk::PhysicalDeviceType::INTEGRATED_GPU
+                    | vk::PhysicalDeviceType::VIRTUAL_GPU => {
+                        let device = VulkanDevice::from_properties(index, &props);
+
+                        // Query memory properties
+                        let mem_props = unsafe {
+                            instance.get_physical_device_memory_properties(*physical_device)
+                        };
+
+                        // Sum device-local memory heaps
+                        let mut total_memory: u64 = 0;
+                        for i in 0..mem_props.memory_heap_count as usize {
+                            let heap = mem_props.memory_heaps[i];
+                            if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                                total_memory += heap.size;
+                            }
+                        }
+
+                        // Update device with memory info
+                        let mut device = device;
+                        device.capabilities.total_memory = total_memory;
+                        device.capabilities.available_memory = total_memory; // Approximate
+
+                        devices.push(device);
+                    }
+                    _ => {
+                        // Skip CPU and other device types
+                    }
+                }
+            }
+
+            // Clean up instance (we'll create a new one when actually using the device)
+            unsafe { instance.destroy_instance(None) };
+
+            Ok(devices)
         }
 
         #[cfg(not(feature = "vulkan"))]

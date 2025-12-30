@@ -3,14 +3,19 @@
 //! This backend provides cross-platform GPU/CPU computation via OpenCL,
 //! supporting a wide range of hardware from various vendors.
 //!
-//! Note: This is a stub implementation. Full OpenCL support requires
-//! integration with the opencl3 crate.
+//! ## Feature Flag
+//!
+//! Enable the `opencl` feature to use this backend:
+//! ```toml
+//! [dependencies]
+//! tsai_compute = { version = "0.1", features = ["opencl"] }
+//! ```
 
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::backend::{CommandEncoder, ComputeBackend, Fence};
-use crate::device::{ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceId, DeviceType};
+use crate::device::{ComputeDevice, ComputeVersion, DeviceCapabilities, DeviceFeature, DeviceId, DeviceType};
 use crate::error::{ComputeError, ComputeResult};
 use crate::memory::{Buffer, BufferMapping, BufferUsage};
 
@@ -20,6 +25,10 @@ pub struct OpenClDevice {
     id: DeviceId,
     name: String,
     capabilities: DeviceCapabilities,
+    #[cfg(feature = "opencl")]
+    platform_index: usize,
+    #[cfg(feature = "opencl")]
+    device_index: usize,
 }
 
 impl Hash for OpenClDevice {
@@ -37,7 +46,8 @@ impl PartialEq for OpenClDevice {
 impl Eq for OpenClDevice {}
 
 impl OpenClDevice {
-    /// Create an OpenCL device (stub).
+    /// Create an OpenCL device (non-opencl feature fallback).
+    #[cfg(not(feature = "opencl"))]
     #[allow(dead_code)]
     fn new(platform_index: u32, device_index: u32, name: String, opencl_version: (u32, u32)) -> Self {
         let mut capabilities = DeviceCapabilities::default();
@@ -52,6 +62,23 @@ impl OpenClDevice {
             capabilities,
         }
     }
+}
+
+/// Parse OpenCL version string like "OpenCL 3.0 ..." into (major, minor).
+#[cfg(feature = "opencl")]
+fn parse_opencl_version(version: &str) -> (u32, u32) {
+    // Version string format: "OpenCL X.Y <vendor info>"
+    let parts: Vec<&str> = version.split_whitespace().collect();
+    if parts.len() >= 2 {
+        let version_part = parts[1];
+        let nums: Vec<&str> = version_part.split('.').collect();
+        if nums.len() >= 2 {
+            let major = nums[0].parse().unwrap_or(1);
+            let minor = nums[1].parse().unwrap_or(0);
+            return (major, minor);
+        }
+    }
+    (1, 0) // Default to OpenCL 1.0
 }
 
 impl ComputeDevice for OpenClDevice {
@@ -226,15 +253,67 @@ impl ComputeBackend for OpenClBackend {
     fn enumerate_devices() -> ComputeResult<Vec<Self::Device>> {
         #[cfg(feature = "opencl")]
         {
-            // Note: Full OpenCL implementation requires:
-            // 1. Query platforms with opencl3::platform::get_platforms()
-            // 2. Enumerate devices on each platform
-            // 3. Query device properties and capabilities
-            // 4. Create context and command queue
-            // This is a placeholder that returns an error
-            Err(ComputeError::DiscoveryFailed(
-                "OpenCL device enumeration requires full opencl3 integration (not yet implemented)".to_string(),
-            ))
+            use opencl3::platform::get_platforms;
+            use opencl3::device::{Device, CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_ACCELERATOR};
+
+            // Get all OpenCL platforms
+            let platforms = get_platforms().map_err(|e| {
+                ComputeError::DiscoveryFailed(format!("Failed to get OpenCL platforms: {:?}", e))
+            })?;
+
+            let mut devices = Vec::new();
+            let mut global_device_index = 0u32;
+
+            for (platform_index, platform) in platforms.iter().enumerate() {
+                // Get GPU and accelerator devices from this platform
+                let device_ids = platform
+                    .get_devices(CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR)
+                    .unwrap_or_default();
+
+                for (device_index, device_id) in device_ids.iter().enumerate() {
+                    let device = Device::new(*device_id);
+
+                    // Get device name
+                    let name = device.name().unwrap_or_else(|_| "Unknown OpenCL Device".to_string());
+
+                    // Get OpenCL version
+                    let version_str = device.version().unwrap_or_default();
+                    let (major, minor) = parse_opencl_version(&version_str);
+
+                    // Get device capabilities
+                    let mut capabilities = DeviceCapabilities::default();
+                    capabilities.compute_version = ComputeVersion::OpenCl { major, minor };
+
+                    // Get vendor
+                    capabilities.vendor = device.vendor().unwrap_or_else(|_| "Unknown".to_string());
+
+                    // Get compute units
+                    capabilities.compute_units = device
+                        .max_compute_units()
+                        .unwrap_or(1) as u32;
+
+                    // Get memory
+                    capabilities.total_memory = device.global_mem_size().unwrap_or(0);
+                    capabilities.available_memory = capabilities.total_memory;
+
+                    // Check for features
+                    if device.max_work_group_size().unwrap_or(0) >= 256 {
+                        capabilities.features.insert(DeviceFeature::Compute);
+                    }
+
+                    devices.push(OpenClDevice {
+                        id: DeviceId::opencl(platform_index as u32, device_index as u32),
+                        name,
+                        capabilities,
+                        platform_index,
+                        device_index,
+                    });
+
+                    global_device_index += 1;
+                }
+            }
+
+            Ok(devices)
         }
 
         #[cfg(not(feature = "opencl"))]
