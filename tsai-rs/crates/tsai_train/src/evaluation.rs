@@ -215,14 +215,25 @@ where
         let preds = logits.argmax(1).squeeze::<1>(1);
 
         // Convert to CPU values
-        let preds_data: Vec<i64> = preds.into_data().to_vec().unwrap();
+        // Note: argmax returns different int types on different backends (I32 on NdArray, I64 on WGPU)
+        // We convert to i32 first, falling back to i64 if that fails
+        let preds_data: Vec<usize> = {
+            let data = preds.into_data();
+            if let Ok(vec) = data.clone().to_vec::<i32>() {
+                vec.into_iter().map(|x| x as usize).collect()
+            } else if let Ok(vec) = data.to_vec::<i64>() {
+                vec.into_iter().map(|x| x as usize).collect()
+            } else {
+                panic!("Unsupported prediction data type");
+            }
+        };
         let targets_data: Vec<f32> = y.reshape([batch_size]).into_data().to_vec().unwrap();
         let probs_data: Vec<f32> = probs.into_data().to_vec().unwrap();
 
         let n_classes = probs_data.len() / batch_size;
 
         for i in 0..batch_size {
-            all_predictions.push(preds_data[i] as usize);
+            all_predictions.push(preds_data[i]);
             all_targets.push(targets_data[i] as usize);
 
             let prob_start = i * n_classes;
