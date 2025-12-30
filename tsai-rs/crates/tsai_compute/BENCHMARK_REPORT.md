@@ -54,12 +54,28 @@ The `tsai_compute` crate provides portable SIMD operations via the `wide` crate,
 | 65,536     | 8.51 Gelem/s    | 2.22 Gelem/s      | **3.8x** |
 | 262,144    | 6.63 Gelem/s    | 2.15 Gelem/s      | **3.1x** |
 
-### 2. Fast Hardware Discovery
+### 2. Fast Hardware Discovery with Memoization
 
 | Operation            | Time      | Notes                           |
 |---------------------|-----------|----------------------------------|
-| Full Discovery      | ~50 µs    | CPU + GPU enumeration            |
+| Full Discovery      | ~50 µs    | CPU + GPU enumeration (first call) |
+| Cached Lookup       | <50 ns    | Subsequent calls via `get_device_pool()` |
 | CPU-only Discovery  | ~500 ns   | Just CPU backend                 |
+
+The `get_device_pool()` function automatically memoizes discovery results:
+
+```rust
+// First call: performs full discovery (~50µs)
+let pool1 = get_device_pool()?;
+
+// Subsequent calls: returns cached result (<50ns)
+let pool2 = get_device_pool()?;
+
+// Check how long discovery took
+if let Some(us) = get_discovery_time_us() {
+    println!("Discovery took {}µs", us);
+}
+```
 
 ### 3. Fast Device Selection
 
@@ -92,14 +108,14 @@ Buffer allocation is very fast (~30 ns for 1KB, ~380 ns for 1MB).
 
 ## Supported Backends
 
-| Backend | Status | Platform |
-|---------|--------|----------|
-| CPU (SIMD) | ✅ Full | All platforms |
-| Metal | ✅ Ready | macOS |
-| CUDA | ✅ Ready | Linux/Windows + NVIDIA |
-| Vulkan | 🔧 Stub | Cross-platform |
-| OpenCL | 🔧 Stub | Cross-platform |
-| ROCm | 🔧 Stub | Linux + AMD |
+| Backend | Status | Platform | Detection Method |
+|---------|--------|----------|------------------|
+| CPU (SIMD) | ✅ Full | All platforms | Direct |
+| Metal | ✅ Full | macOS | objc2-metal |
+| CUDA | ✅ Full | Linux/Windows + NVIDIA | cudarc |
+| Vulkan | ✅ Full | Cross-platform | ash (Vulkan API) |
+| OpenCL | ✅ Full | Cross-platform | opencl3 |
+| ROCm | ✅ Full | Linux + AMD | sysfs detection |
 
 ## Running Benchmarks
 
