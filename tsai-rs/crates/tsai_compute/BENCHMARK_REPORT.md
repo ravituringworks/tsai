@@ -56,11 +56,11 @@ The `tsai_compute` crate provides portable SIMD operations via the `wide` crate,
 
 ### 2. Fast Hardware Discovery with Memoization
 
-| Operation            | Time      | Notes                           |
-|---------------------|-----------|----------------------------------|
-| Full Discovery      | ~50 µs    | CPU + GPU enumeration (first call) |
-| Cached Lookup       | <50 ns    | Subsequent calls via `get_device_pool()` |
-| CPU-only Discovery  | ~500 ns   | Just CPU backend                 |
+| Operation            | Time      | Speedup | Notes                           |
+|---------------------|-----------|---------|----------------------------------|
+| Full Discovery      | ~120 µs   | 1x      | CPU + GPU enumeration (first call) |
+| Cached Lookup       | **~8.5 ns** | **14,000x** | Subsequent calls via `get_device_pool()` |
+| CPU-only Discovery  | ~2.8 µs   | 43x     | Just CPU backend                 |
 
 The `get_device_pool()` function automatically memoizes discovery results:
 
