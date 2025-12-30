@@ -25,6 +25,17 @@ fn bench_hardware_discovery(c: &mut Criterion) {
         })
     });
 
+    // Test memoized discovery - first call initializes cache
+    let _ = tsai_compute::get_device_pool();
+
+    group.bench_function("cached_lookup", |bench| {
+        bench.iter(|| {
+            // This should be <50ns since it returns cached result
+            let pool = tsai_compute::get_device_pool().unwrap();
+            black_box(pool.device_count())
+        })
+    });
+
     group.finish();
 }
 
